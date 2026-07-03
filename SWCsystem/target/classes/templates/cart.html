@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FreshMart | Cart</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; color: #2c3e50; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+        h1 { margin: 10px 0 20px; }
+        .cart { background: #fff; border-radius: 12px; box-shadow: 0 6px 16px rgba(0,0,0,.08); overflow: hidden; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 14px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f3f6f9; font-weight: 700; }
+        .item { display: flex; align-items: center; gap: 12px; }
+        .item img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; }
+        .qty { display: flex; align-items: center; gap: 8px; }
+        .qty button { width: 28px; height: 28px; border: none; border-radius: 50%; background: #2ecc71; color: #fff; cursor: pointer; }
+        .remove { background: transparent; border: none; color: #e74c3c; cursor: pointer; }
+        .summary { display: flex; justify-content: flex-end; padding: 16px; gap: 20px; align-items: center; }
+        .total { font-size: 20px; font-weight: 800; }
+        .actions { display: flex; gap: 10px; }
+        .btn { padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; }
+        .btn.primary { background: #2ecc71; color: #fff; }
+        .btn.secondary { background: #3498db; color: #fff; }
+        .empty { text-align: center; padding: 40px; color: #95a5a6; }
+        a { color: #3498db; text-decoration: none; }
+    </style>
+    <script>
+        function loadCart() {
+            try { return JSON.parse(localStorage.getItem('fm_cart') || '[]'); } catch { return []; }
+        }
+        function saveCart(items) {
+            localStorage.setItem('fm_cart', JSON.stringify(items));
+        }
+        function formatPrice(n) { return `Rs ${Number(n||0).toFixed(2)}`; }
+        function render() {
+            const tbody = document.getElementById('cart-body');
+            const totalEl = document.getElementById('cart-total');
+            const items = loadCart();
+            tbody.innerHTML = '';
+            if (items.length === 0) {
+                document.getElementById('empty-state').style.display = 'block';
+                document.getElementById('cart-table').style.display = 'none';
+                totalEl.textContent = formatPrice(0);
+                return;
+            }
+            document.getElementById('empty-state').style.display = 'none';
+            document.getElementById('cart-table').style.display = 'table';
+            let total = 0;
+            items.forEach((it, idx) => {
+                const tr = document.createElement('tr');
+                const line = Number(it.price||0) * Number(it.qty||1);
+                total += line;
+                tr.innerHTML = `
+                    <td>
+                      <div class="item">
+                        <img src="${it.imageUrl||''}" alt="${escapeHtml(it.title||'')}">
+                        <div>
+                          <div style="font-weight:700;">${escapeHtml(it.title||'')}</div>
+                          <div style="color:#7f8c8d; font-size: 12px;">${escapeHtml(it.category||'')}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>${formatPrice(it.price)} <span style="color:#7f8c8d;">${escapeHtml(it.unit||'')}</span></td>
+                    <td>
+                      <div class="qty">
+                        <button onclick="updateQty(${idx}, -1)">-</button>
+                        <span id="q${idx}">${it.qty||1}</span>
+                        <button onclick="updateQty(${idx}, 1)">+</button>
+                      </div>
+                    </td>
+                    <td>${formatPrice(line)}</td>
+                    <td><button class="remove" onclick="removeItem(${idx})"><i class="fas fa-trash"></i></button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+            totalEl.textContent = formatPrice(total);
+        }
+        function updateQty(idx, delta) {
+            const items = loadCart();
+            if (!items[idx]) return;
+            const next = Math.max(1, Number(items[idx].qty||1) + delta);
+            items[idx].qty = next;
+            saveCart(items);
+            render();
+        }
+        function removeItem(idx) {
+            const items = loadCart();
+            items.splice(idx,1);
+            saveCart(items);
+            render();
+        }
+        function clearCart() {
+            saveCart([]);
+            render();
+        }
+        async function checkout() {
+            const items = loadCart().map(it => ({ productId: it.id, qty: Number(it.qty||1) }));
+            if (!items.length) { alert('Your cart is empty.'); return; }
+            try {
+                const res = await fetch('/api/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(items)
+                });
+                if (!res.ok) {
+                    const msg = await res.text();
+                    alert(msg || 'Checkout failed');
+                    return;
+                }
+                saveCart([]);
+                render();
+                alert('Order placed successfully!');
+            } catch (e) {
+                alert('Network error during checkout');
+            }
+        }
+        function escapeHtml(str){
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+        }
+        document.addEventListener('DOMContentLoaded', render);
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+            <h1>Your Cart</h1>
+            <div>
+                <a href="/freshmart"><i class="fas fa-arrow-left"></i> Continue Shopping</a>
+            </div>
+        </div>
+
+        <div id="empty-state" class="empty" style="display:none;">
+            <p>Your cart is empty.</p>
+            <p><a href="/freshmart">Browse products</a> and add items to your cart.</p>
+        </div>
+
+        <div class="cart">
+            <table id="cart-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Price</th>
+                        <th>Quantity</th>
+                        <th>Subtotal</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="cart-body"></tbody>
+            </table>
+            <div class="summary">
+                <div class="total">Total: <span id="cart-total">Rs 0.00</span></div>
+                <div class="actions">
+                    <button class="btn secondary" onclick="clearCart()">Clear Cart</button>
+                    <button class="btn primary" onclick="checkout()">Checkout</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+
+
